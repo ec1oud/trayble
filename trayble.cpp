@@ -1,6 +1,6 @@
 /****************************************************************************
 **
-** Copyright (C) 2016 Shawn Rutledge
+** Copyright (C) 2018 Shawn Rutledge
 **
 ** This file is free software; you can redistribute it and/or
 ** modify it under the terms of the GNU General Public License
@@ -15,12 +15,12 @@
 **
 ****************************************************************************/
 
-#include "weightscale.h"
+#include "trayble.h"
 #include <QDebug>
 #include <QInputDialog>
 #include <QMetaEnum>
 
-WeightScale::WeightScale() :
+TrayBle::TrayBle() :
     m_discoveryAgent(nullptr), m_controller(nullptr), m_service(nullptr),
     m_influxInsertReq(QUrl("http://localhost:8086/write?db=health")),
     m_netReply(nullptr), m_updated(false)
@@ -36,23 +36,23 @@ WeightScale::WeightScale() :
     connect(m_discoveryAgent, SIGNAL(finished()), this, SLOT(scanFinished()));
 }
 
-WeightScale::~WeightScale()
+TrayBle::~TrayBle()
 {
 }
 
-void WeightScale::deviceSearch()
+void TrayBle::deviceSearch()
 {
     m_discoveryAgent->start();
     setStatus(tr("scanning for devices"));
 }
 
-void WeightScale::scanFinished()
+void TrayBle::scanFinished()
 {
     if (!m_device.isValid())
         deviceSearch();
 }
 
-void WeightScale::addDevice(const QBluetoothDeviceInfo &device)
+void TrayBle::addDevice(const QBluetoothDeviceInfo &device)
 {
     if (device.coreConfigurations() & QBluetoothDeviceInfo::LowEnergyCoreConfiguration) {
         qDebug() << "discovered device " << device.name() << device.address().toString();
@@ -63,7 +63,7 @@ void WeightScale::addDevice(const QBluetoothDeviceInfo &device)
     }
 }
 
-void WeightScale::deviceScanError(QBluetoothDeviceDiscoveryAgent::Error e)
+void TrayBle::deviceScanError(QBluetoothDeviceDiscoveryAgent::Error e)
 {
     switch (e) {
     case QBluetoothDeviceDiscoveryAgent::PoweredOffError:
@@ -79,19 +79,19 @@ void WeightScale::deviceScanError(QBluetoothDeviceDiscoveryAgent::Error e)
     setStatus(tr("device scan error"));
 }
 
-void WeightScale::setStatus(QString s)
+void TrayBle::setStatus(QString s)
 {
     qDebug() << s;
     m_status = s;
     emit statusChanged(m_status);
 }
 
-QString WeightScale::status() const
+QString TrayBle::status() const
 {
     return m_status;
 }
 
-void WeightScale::connectService()
+void TrayBle::connectService()
 {
     qDebug() << m_device.name() << m_device.address();
 
@@ -116,27 +116,27 @@ void WeightScale::connectService()
     m_controller->connectToDevice();
 }
 
-void WeightScale::deviceConnected()
+void TrayBle::deviceConnected()
 {
     m_updated = false;
     m_controller->discoverServices();
 }
 
-void WeightScale::deviceDisconnected()
+void TrayBle::deviceDisconnected()
 {
     setStatus(tr("disconnected"));
     m_device = QBluetoothDeviceInfo();
     deviceSearch();
 }
 
-void WeightScale::serviceDiscovered(const QBluetoothUuid &svc)
+void TrayBle::serviceDiscovered(const QBluetoothUuid &svc)
 {
     qDebug() << "discovered service" << svc << hex << svc.toUInt16();
     if (svc.toUInt16() == 0xfff0)
         m_serviceUuid = svc;
 }
 
-void WeightScale::serviceScanDone()
+void TrayBle::serviceScanDone()
 {
     delete m_service;
     m_service = nullptr;
@@ -162,7 +162,7 @@ void WeightScale::serviceScanDone()
     m_service->discoverDetails();
 }
 
-void WeightScale::disconnectService()
+void TrayBle::disconnectService()
 {
     // disable notifications before disconnecting
     if (m_notification.isValid() && m_service
@@ -175,7 +175,7 @@ void WeightScale::disconnectService()
     }
 }
 
-void WeightScale::sendRequest()
+void TrayBle::sendRequest()
 {
     for (const QLowEnergyCharacteristic &characteristic : m_service->characteristics()) {
         qDebug() << "   characteristic " << hex << characteristic.handle() << characteristic.name() << characteristic.properties();
@@ -203,12 +203,12 @@ void WeightScale::sendRequest()
     }
 }
 
-void WeightScale::controllerError(QLowEnergyController::Error e)
+void TrayBle::controllerError(QLowEnergyController::Error e)
 {
     setStatus(tr("controller error ") + e);
 }
 
-void WeightScale::serviceStateChanged(QLowEnergyService::ServiceState s)
+void TrayBle::serviceStateChanged(QLowEnergyService::ServiceState s)
 {
     switch (s) {
     case QLowEnergyService::ServiceDiscovered:
@@ -219,12 +219,12 @@ void WeightScale::serviceStateChanged(QLowEnergyService::ServiceState s)
     }
 }
 
-void WeightScale::serviceError(QLowEnergyService::ServiceError e)
+void TrayBle::serviceError(QLowEnergyService::ServiceError e)
 {
     setStatus(tr("service error ") + e);
 }
 
-void WeightScale::networkFinished()
+void TrayBle::networkFinished()
 {
     qDebug() << "influxDB says: " << m_netReply->readAll();
     m_netReply->disconnect();
@@ -232,7 +232,7 @@ void WeightScale::networkFinished()
     m_netReply = nullptr;
 }
 
-void WeightScale::networkError(QNetworkReply::NetworkError e)
+void TrayBle::networkError(QNetworkReply::NetworkError e)
 {
     setStatus(tr("network error ") +
               m_netReply->metaObject()->enumerator(
@@ -242,7 +242,7 @@ void WeightScale::networkError(QNetworkReply::NetworkError e)
     m_netReply = nullptr;
 }
 
-void WeightScale::updateBodyComp(const QLowEnergyCharacteristic &c,
+void TrayBle::updateBodyComp(const QLowEnergyCharacteristic &c,
                                  const QByteArray &value)
 {
     if (m_updated)
@@ -341,7 +341,7 @@ void WeightScale::updateBodyComp(const QLowEnergyCharacteristic &c,
             QString reqData = QLatin1String("bodycomp,username=%1 weight=%2,unit=\"%3\",fat=%4,water=%5,muscle=%6,bone=%7,bmr=%8,vfat=%9");
             reqData = reqData.arg(nearestUser).arg(m_weight).arg(tr("kg")).arg(m_fat).arg(m_water).arg(m_muscle).arg(m_bone).arg(m_bmr).arg(m_vfat);
             m_netReply = m_nam.post(m_influxInsertReq, reqData.toLatin1());
-            connect(m_netReply, &QNetworkReply::finished, this, &WeightScale::networkFinished);
+            connect(m_netReply, &QNetworkReply::finished, this, &TrayBle::networkFinished);
             connect(m_netReply, SIGNAL(error(QNetworkReply::NetworkError)), this, SLOT(networkError(QNetworkReply::NetworkError)));
         }
     }

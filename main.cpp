@@ -1,6 +1,6 @@
 /****************************************************************************
 **
-** Copyright (C) 2016 Shawn Rutledge
+** Copyright (C) 2018 Shawn Rutledge
 **
 ** This file is free software; you can redistribute it and/or
 ** modify it under the terms of the GNU General Public License
@@ -20,7 +20,7 @@
 #include <QMessageBox>
 #include <QSystemTrayIcon>
 #include "trayicon.h"
-#include "weightscale.h"
+#include "trayble.h"
 
 int main(int argc, char *argv[])
 {
@@ -36,20 +36,20 @@ int main(int argc, char *argv[])
     }
     QApplication::setQuitOnLastWindowClosed(false);
 
-    WeightScale weightScale;
+    TrayBle weightScale;
 
     QMenu trayIconMenu;
 //    trayIconMenu.addSeparator();
-    QObject::connect(trayIconMenu.addAction(WeightScale::tr("Quit")), &QAction::triggered,
+    QObject::connect(trayIconMenu.addAction(TrayBle::tr("Quit")), &QAction::triggered,
                      &app, &QApplication::quit);
 
     TrayIcon trayIcon;
     trayIcon.setContextMenu(&trayIconMenu);
     trayIcon.show();
 
-    QObject::connect(&weightScale, &WeightScale::error,
+    QObject::connect(&weightScale, &TrayBle::error,
                      &trayIcon, &TrayIcon::showError);
-    QObject::connect(&weightScale, &WeightScale::statusChanged,
+    QObject::connect(&weightScale, &TrayBle::statusChanged,
                      &trayIcon, &TrayIcon::showTooltip);
     QObject::connect(&weightScale, SIGNAL(weightUpdated(QString,QString)),
                      &trayIcon, SLOT(showMessage(QString,QString)));

@@ -1,12 +1,12 @@
 TEMPLATE = app
-TARGET = weightscale
+TARGET = trayble
 
 QT += widgets bluetooth svg network
 
-HEADERS += weightscale.h \
+HEADERS += trayble.h \
     trayicon.h
 
-SOURCES += weightscale.cpp \
+SOURCES += trayble.cpp \
     main.cpp \
     trayicon.cpp
 

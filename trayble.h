@@ -1,6 +1,6 @@
 /****************************************************************************
 **
-** Copyright (C) 2016 Shawn Rutledge
+** Copyright (C) 2018 Shawn Rutledge
 **
 ** This file is free software; you can redistribute it and/or
 ** modify it under the terms of the GNU General Public License
@@ -15,8 +15,8 @@
 **
 ****************************************************************************/
 
-#ifndef WEIGHTSCALE_H
-#define WEIGHTSCALE_H
+#ifndef TRAYBLE_H
+#define TRAYBLE_H
 
 #include <QBluetoothDeviceDiscoveryAgent>
 #include <QBluetoothDeviceInfo>
@@ -27,14 +27,14 @@
 #include <QNetworkReply>
 #include <QSettings>
 
-class WeightScale : public QObject
+class TrayBle : public QObject
 {
     Q_OBJECT
     Q_PROPERTY(QString status READ status WRITE setStatus NOTIFY statusChanged)
 
 public:
-    WeightScale();
-    ~WeightScale();
+    TrayBle();
+    ~TrayBle();
 
     QString status() const;
     void setStatus(QString s);
@@ -93,4 +93,4 @@ private:
     bool m_updated;
 };
 
-#endif // WEIGHTSCALE_H
+#endif // TRAYBLE_H

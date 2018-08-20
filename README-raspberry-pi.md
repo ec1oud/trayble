@@ -15,7 +15,7 @@ $ make -j4
 $ bluetoothctl
 [bluetooth]# power on
 [bluetooth]# exit
-$ ./weightscale
+$ ./trayble
 ```
 
 It's still not working reliably enough yet, but you might get lucky.

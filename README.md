@@ -1,5 +1,6 @@
-A Qt application to show and record readings from the
-[1byOne body composition scale](https://www.amazon.com/dp/B01FHELB56)
+A Qt system tray application to show and record readings from BLE devices such as the
+[1byOne body composition scale](https://www.amazon.com/dp/B01FHELB56).
+Rhymes with table.
 
 The values are recorded to an
 [influxDB](https://github.com/influxdata/influxdb) instance.
