@@ -65,18 +65,22 @@ void TrayBle::addDevice(const QBluetoothDeviceInfo &device)
 
 void TrayBle::deviceScanError(QBluetoothDeviceDiscoveryAgent::Error e)
 {
+    static QMetaEnum menum = m_discoveryAgent->metaObject()->enumerator(
+                m_discoveryAgent->metaObject()->indexOfEnumerator("Error"));
+    QString msg;
     switch (e) {
     case QBluetoothDeviceDiscoveryAgent::PoweredOffError:
-        emit error(tr("Bluetooth adaptor is powered off"));
+        msg = tr("Bluetooth adaptor is powered off");
         break;
     case QBluetoothDeviceDiscoveryAgent::InputOutputError:
-        emit error(tr("no Bluetooth adapter or I/O error"));
+        msg = tr("no Bluetooth adapter or I/O error");
         break;
     default:
-//        emit error(tr("device scan error %1").arg(error));
+        msg = tr("device scan error: %1").arg(menum.valueToKey(e));
         break;
     }
-    setStatus(tr("device scan error"));
+    emit error(msg);
+    setStatus(msg);
 }
 
 void TrayBle::setStatus(QString s)
@@ -124,33 +128,38 @@ void TrayBle::deviceConnected()
 
 void TrayBle::deviceDisconnected()
 {
-    setStatus(tr("disconnected"));
-    m_device = QBluetoothDeviceInfo();
+    QLowEnergyController *ctrl = static_cast<QLowEnergyController *>(sender());
+    qDebug() << ctrl->remoteName() << ctrl->state();
+    setStatus(tr("%1 disconnected").arg(ctrl->remoteName()));
     deviceSearch();
 }
 
 void TrayBle::serviceDiscovered(const QBluetoothUuid &svc)
 {
-    qDebug() << "discovered service" << svc << hex << svc.toUInt16();
+    QLowEnergyController *ctrl = static_cast<QLowEnergyController *>(sender());
+    qDebug() << ctrl->remoteName() << ": discovered service" << svc << hex << svc.toUInt16();
     if (svc.toUInt16() == 0xfff0)
         m_serviceUuid = svc;
 }
 
 void TrayBle::serviceScanDone()
 {
+    QLowEnergyController *ctrl = static_cast<QLowEnergyController *>(sender());
+    qDebug() << ctrl->remoteName();
+
     delete m_service;
     m_service = nullptr;
 
     if (m_serviceUuid.isNull()) {
-        setStatus(tr("no known service on ") + m_device.name());
+        setStatus(tr("no known service on ") + ctrl->remoteName());
         return;
     }
 
     setStatus(tr("connecting..."));
-    m_service = m_controller->createServiceObject(m_serviceUuid, this);
+    m_service = ctrl->createServiceObject(m_serviceUuid, this);
 
     if (!m_service) {
-        setStatus(tr("failed to connect to ") + m_device.name());
+        setStatus(tr("failed to connect to ") + ctrl->remoteName());
         return;
     }
 
@@ -158,6 +167,8 @@ void TrayBle::serviceScanDone()
             this, SLOT(serviceStateChanged(QLowEnergyService::ServiceState)));
     connect(m_service, SIGNAL(characteristicChanged(QLowEnergyCharacteristic,QByteArray)),
             this, SLOT(updateBodyComp(QLowEnergyCharacteristic,QByteArray)));
+    connect(m_service, SIGNAL(error(QLowEnergyService::ServiceError)),
+            this, SLOT(serviceError(QLowEnergyService::ServiceError)));
 
     m_service->discoverDetails();
 }
@@ -205,7 +216,10 @@ void TrayBle::sendRequest()
 
 void TrayBle::controllerError(QLowEnergyController::Error e)
 {
-    setStatus(tr("controller error ") + e);
+    static QMetaEnum menum = static_cast<QLowEnergyController *>(sender())
+            ->metaObject()->enumerator(static_cast<QLowEnergyController *>(sender())
+                                       ->metaObject()->indexOfEnumerator("Error"));
+    setStatus(tr("controller error: %1").arg(menum.valueToKey(e)));
 }
 
 void TrayBle::serviceStateChanged(QLowEnergyService::ServiceState s)
@@ -221,7 +235,10 @@ void TrayBle::serviceStateChanged(QLowEnergyService::ServiceState s)
 
 void TrayBle::serviceError(QLowEnergyService::ServiceError e)
 {
-    setStatus(tr("service error ") + e);
+    static QMetaEnum menum = static_cast<QLowEnergyService *>(sender())
+            ->metaObject()->enumerator(static_cast<QLowEnergyService *>(sender())
+                                       ->metaObject()->indexOfEnumerator("ServiceError"));
+    setStatus(tr("service error: %1").arg(menum.valueToKey(e)));
 }
 
 void TrayBle::networkFinished()
@@ -234,9 +251,9 @@ void TrayBle::networkFinished()
 
 void TrayBle::networkError(QNetworkReply::NetworkError e)
 {
-    setStatus(tr("network error ") +
-              m_netReply->metaObject()->enumerator(
-                  m_netReply->metaObject()->indexOfEnumerator("QNetworkReply::NetworkError")).key(e));
+    static QMetaEnum menum = m_netReply->metaObject()->enumerator(
+                m_netReply->metaObject()->indexOfEnumerator("NetworkError"));
+    setStatus(tr("network error: ") + menum.key(e));
     m_netReply->disconnect();
     m_netReply->deleteLater();
     m_netReply = nullptr;
