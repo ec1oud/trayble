@@ -16,9 +16,14 @@ the data separate in Influx.
 So far it does not handle other types of scales, but they
 could be added.
 
-Requires Qt 5.8 or newer with extra modules
+Work is in progress on the
+[APlant soil moisture sensor](http://wiki.aprbrother.com/wiki/APlant).
+So far it reads the data but doesn't log it or display it (except
+via qDebug on the console).
+
+Requires Qt 5.12 or newer with extra modules
 qtconnectivity and qtsvg.  Qt Bluetooth doesn't support
-all [platforms](https://doc.qt.io/qt-5.10/qtbluetooth-index.html)
+all [platforms](http://doc.qt.io/qt-5/qtbluetooth-index.html)
 yet, but it should get better.
 
 You could try it on a [Raspberry Pi](README-raspberry-pi.md)

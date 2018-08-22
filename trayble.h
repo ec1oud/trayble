@@ -27,6 +27,11 @@
 #include <QNetworkReply>
 #include <QSettings>
 
+struct DeviceInfo {
+    QBluetoothDeviceInfo info;
+    QLowEnergyController *controller;
+};
+
 class TrayBle : public QObject
 {
     Q_OBJECT
@@ -40,12 +45,13 @@ public:
     void setStatus(QString s);
 
     void deviceSearch();
-    void connectService();
+    void connectService(const QBluetoothDeviceInfo &device);
     void disconnectService();
     void sendRequest();
 
 private slots:
     void addDevice(const QBluetoothDeviceInfo&);
+    void updateDevice(const QBluetoothDeviceInfo &device, QBluetoothDeviceInfo::Fields updatedFields);
     void scanFinished();
     void deviceScanError(QBluetoothDeviceDiscoveryAgent::Error);
 
@@ -60,37 +66,39 @@ private slots:
                               const QByteArray &value);
     void serviceError(QLowEnergyService::ServiceError e);
 
+    void decodeIBeaconData(const QBluetoothDeviceInfo &dev, QByteArray data);
+
     void networkFinished();
     void networkError(QNetworkReply::NetworkError e);
 
 signals:
     void error(QString message);
     void statusChanged(QString message);
-    void weightUpdated(QString person, QString message);
+    void notify(QString title, QString message);
 
 private:
-    QBluetoothDeviceDiscoveryAgent *m_discoveryAgent;
-    QBluetoothDeviceInfo m_device;
+    QBluetoothDeviceDiscoveryAgent *m_discoveryAgent = nullptr;
+    QSet<QString> m_discoveredDevices;
+    QHash<QString, DeviceInfo> m_connectedDevices; // by QBluetoothAddress.toString(), because QBluetoothAddress qHash impl is missing
     QLowEnergyDescriptor m_notification;
-    QLowEnergyController *m_controller;
     QBluetoothUuid m_serviceUuid;
-    QLowEnergyService *m_service;
+    QLowEnergyService *m_service = nullptr; // TODO nix
     QString m_status;
 
     QSettings m_settings;
 
     QNetworkAccessManager m_nam;
     QNetworkRequest m_influxInsertReq;
-    QNetworkReply *m_netReply;
+    QNetworkReply *m_netReply = nullptr;
 
-    qreal m_weight;
-    qreal m_fat;
-    qreal m_bone;
-    qreal m_muscle;
-    qreal m_vfat;
-    qreal m_water;
-    int m_bmr;
-    bool m_updated;
+    qreal m_weight = 0;
+    qreal m_fat = 0;
+    qreal m_bone = 0;
+    qreal m_muscle = 0;
+    qreal m_vfat = 0;
+    qreal m_water = 0;
+    int m_bmr = 0;
+    bool m_updatedBodyComp = false;
 };
 
 #endif // TRAYBLE_H

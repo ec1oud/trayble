@@ -2,10 +2,11 @@ match up users based on full body composition, not just weight?
 handle multiple scales of different types (refactor device comms)
 configurable storage (refactor recording destinations): rrdtool, csv etc.
 graphing UI?  or just use one of the influx graphing solutions
-other types of Bluetooth sensors? (and rename this project)
+different influx URL per device type, and configurable
 
 done
 ----
 match approx. weights to users; if too different, prompt to enter user
 record users and last-known values in QSettings?
+other types of Bluetooth sensors? (and rename this project)
 

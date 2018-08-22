@@ -20,10 +20,10 @@
 #include <QInputDialog>
 #include <QMetaEnum>
 
+static const QStringList supportedDeviceNamePrefixes = { "Electronic Scale", "aplant" };
+
 TrayBle::TrayBle() :
-    m_discoveryAgent(nullptr), m_controller(nullptr), m_service(nullptr),
-    m_influxInsertReq(QUrl("http://localhost:8086/write?db=health")),
-    m_netReply(nullptr), m_updated(false)
+    m_influxInsertReq(QUrl("http://localhost:8086/write?db=health"))
 {
     m_discoveryAgent = new QBluetoothDeviceDiscoveryAgent(this);
     m_discoveryAgent->setLowEnergyDiscoveryTimeout(0); // scan forever
@@ -48,19 +48,44 @@ void TrayBle::deviceSearch()
 
 void TrayBle::scanFinished()
 {
-    if (!m_device.isValid())
-        deviceSearch();
+    setStatus(tr("scanning stopped unexpectedly"));
+    deviceSearch();
 }
 
 void TrayBle::addDevice(const QBluetoothDeviceInfo &device)
 {
+    QString addrString = device.address().toString();
+    if (m_discoveredDevices.contains(addrString)) {
+        qDebug() << "rediscovered" << device.name() << device.address();
+        return;
+    }
     if (device.coreConfigurations() & QBluetoothDeviceInfo::LowEnergyCoreConfiguration) {
-        qDebug() << "discovered device " << device.name() << device.address().toString();
-        if (device.name() == QLatin1String("Electronic Scale")) {
-            m_device = device;
-            connectService();
+        qDebug() << "discovered device " << device.name() << device.address().toString()
+                 << "manufacturer IDs" << hex << device.manufacturerIds();
+        for (const QString &pfx : supportedDeviceNamePrefixes) {
+            if (device.name().startsWith(pfx)) {
+                m_discoveredDevices.insert(addrString);
+                updateDevice(device, QBluetoothDeviceInfo::Field::All);
+                //updateDevice(device, QBluetoothDeviceInfo::Field(0x7fff));
+                connectService(device);
+                connect(m_discoveryAgent, SIGNAL(deviceUpdated(const QBluetoothDeviceInfo&, QBluetoothDeviceInfo::Fields)),
+                        this, SLOT(updateDevice(const QBluetoothDeviceInfo&, QBluetoothDeviceInfo::Fields)));
+            }
         }
     }
+}
+
+void TrayBle::updateDevice(const QBluetoothDeviceInfo &device, QBluetoothDeviceInfo::Fields updatedFields)
+{
+    if (updatedFields.testFlag(QBluetoothDeviceInfo::Field::ManufacturerData))
+        for (auto id : device.manufacturerIds()) {
+            qDebug() << device.name() << device.address() << hex << "ID" << id << "data" << dec << device.manufacturerData(id).count() << hex << "bytes:" << device.manufacturerData(id).toHex();
+            if (id == 0x4c)
+                decodeIBeaconData(device, device.manufacturerData(id));
+        }
+
+    if (device.name() == supportedDeviceNamePrefixes.first()) // Electronic Scale
+        connectService(device);
 }
 
 void TrayBle::deviceScanError(QBluetoothDeviceDiscoveryAgent::Error e)
@@ -95,35 +120,33 @@ QString TrayBle::status() const
     return m_status;
 }
 
-void TrayBle::connectService()
+void TrayBle::connectService(const QBluetoothDeviceInfo &device)
 {
-    qDebug() << m_device.name() << m_device.address();
-
-    if (m_controller) {
-        m_controller->disconnectFromDevice();
-        delete m_controller;
-        m_controller = nullptr;
-
-    }
-    m_controller = new QLowEnergyController(m_device, this);
-    connect(m_controller, SIGNAL(serviceDiscovered(QBluetoothUuid)),
+    QLowEnergyController *ctrl = QLowEnergyController::createCentral(device, this);
+    m_connectedDevices.insert(device.address().toString(), DeviceInfo { device, ctrl });
+    connect(ctrl, SIGNAL(serviceDiscovered(QBluetoothUuid)),
             this, SLOT(serviceDiscovered(QBluetoothUuid)));
-    connect(m_controller, SIGNAL(discoveryFinished()),
+    connect(ctrl, SIGNAL(discoveryFinished()),
             this, SLOT(serviceScanDone()));
-    connect(m_controller, SIGNAL(error(QLowEnergyController::Error)),
+    connect(ctrl, SIGNAL(error(QLowEnergyController::Error)),
             this, SLOT(controllerError(QLowEnergyController::Error)));
-    connect(m_controller, SIGNAL(connected()),
+    connect(ctrl, SIGNAL(connected()),
             this, SLOT(deviceConnected()));
-    connect(m_controller, SIGNAL(disconnected()),
+    connect(ctrl, SIGNAL(disconnected()),
             this, SLOT(deviceDisconnected()));
 
-    m_controller->connectToDevice();
+    if (device.name() == supportedDeviceNamePrefixes.first()) // Electronic Scale
+        ctrl->connectToDevice();
+    else
+        ctrl->discoverServices();
 }
 
 void TrayBle::deviceConnected()
 {
-    m_updated = false;
-    m_controller->discoverServices();
+    QLowEnergyController *ctrl = static_cast<QLowEnergyController *>(sender());
+    qDebug() << ctrl->remoteName();
+    m_updatedBodyComp = false;
+    ctrl->discoverServices();
 }
 
 void TrayBle::deviceDisconnected()
@@ -180,7 +203,7 @@ void TrayBle::disconnectService()
             && m_notification.value() == QByteArray::fromHex("0100")) {
         m_service->writeDescriptor(m_notification, QByteArray::fromHex("0000"));
     } else {
-        m_controller->disconnectFromDevice();
+//        m_controller->disconnectFromDevice(); // TODO
         delete m_service;
         m_service = nullptr;
     }
@@ -241,6 +264,16 @@ void TrayBle::serviceError(QLowEnergyService::ServiceError e)
     setStatus(tr("service error: %1").arg(menum.valueToKey(e)));
 }
 
+void TrayBle::decodeIBeaconData(const QBluetoothDeviceInfo &dev, QByteArray data)
+{
+    if (dev.name().startsWith("aplant") && data.length() == 23) { // TODO and some part of some UUID is well-known?
+        // TODO if there's a settable name on the device, we need that
+        QString message = tr("%1 temperature %2 moisture %3")
+                .arg(dev.name()).arg(int(data[data.length() - 2])).arg(int(data[data.length() - 3]));
+        setStatus(message);
+    }
+}
+
 void TrayBle::networkFinished()
 {
     qDebug() << "influxDB says: " << m_netReply->readAll();
@@ -262,7 +295,7 @@ void TrayBle::networkError(QNetworkReply::NetworkError e)
 void TrayBle::updateBodyComp(const QLowEnergyCharacteristic &c,
                                  const QByteArray &value)
 {
-    if (m_updated)
+    if (m_updatedBodyComp)
         return;
     QByteArray hexValue = value.toHex();
     qDebug() << c.name() << hexValue;
@@ -322,7 +355,7 @@ void TrayBle::updateBodyComp(const QLowEnergyCharacteristic &c,
             return;
         }
         m_bmr = val;
-        m_updated = true;
+        m_updatedBodyComp = true;
 
         // figure out which user this might be
         m_settings.beginGroup(QLatin1String("UserWeights"));
@@ -351,7 +384,7 @@ void TrayBle::updateBodyComp(const QLowEnergyCharacteristic &c,
                 .arg(m_weight).arg(tr("kg")).arg(m_fat).arg(m_water).arg(m_muscle).arg(m_bone).arg(m_bmr).arg(nearestUserDelta);
 
         setStatus(message);
-        emit weightUpdated(nearestUser, message);
+        emit notify(nearestUser, message);
 
         // update influxDB
         if (!m_netReply) {

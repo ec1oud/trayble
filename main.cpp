@@ -51,7 +51,7 @@ int main(int argc, char *argv[])
                      &trayIcon, &TrayIcon::showError);
     QObject::connect(&weightScale, &TrayBle::statusChanged,
                      &trayIcon, &TrayIcon::showTooltip);
-    QObject::connect(&weightScale, SIGNAL(weightUpdated(QString,QString)),
+    QObject::connect(&weightScale, SIGNAL(notify(QString,QString)),
                      &trayIcon, SLOT(showMessage(QString,QString)));
 
 //    connect(trayIcon, &QSystemTrayIcon::messageClicked, &weightScale, &WeightScale::messageClicked);
