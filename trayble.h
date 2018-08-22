@@ -75,6 +75,7 @@ signals:
     void error(QString message);
     void statusChanged(QString message);
     void notify(QString title, QString message);
+    void readingUpdated(QString context, QString values);
 
 private:
     QBluetoothDeviceDiscoveryAgent *m_discoveryAgent = nullptr;

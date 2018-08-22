@@ -270,6 +270,11 @@ void TrayBle::decodeIBeaconData(const QBluetoothDeviceInfo &dev, QByteArray data
         // TODO if there's a settable name on the device, we need that
         QString message = tr("%1 temperature %2 moisture %3")
                 .arg(dev.name()).arg(int(data[data.length() - 2])).arg(int(data[data.length() - 3]));
+        QString reading = tr("%1°C %2%")
+                .arg(int(data[data.length() - 2])).arg(int(data[data.length() - 3]));
+        // If names become ambiguous we could include the address like this:
+//        QString name = dev.name() + QLatin1String(" (") + dev.address().toString() + QLatin1Char(')');
+        emit readingUpdated(dev.name(), reading);
         setStatus(message);
     }
 }
@@ -385,6 +390,7 @@ void TrayBle::updateBodyComp(const QLowEnergyCharacteristic &c,
 
         setStatus(message);
         emit notify(nearestUser, message);
+        emit readingUpdated(nearestUser, message);
 
         // update influxDB
         if (!m_netReply) {

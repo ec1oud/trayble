@@ -26,7 +26,7 @@ int main(int argc, char *argv[])
 {
     QApplication app(argc, argv);
     app.setOrganizationDomain(QLatin1String("ecloud.org"));
-    app.setApplicationName(QLatin1String("WeightScale"));
+    app.setApplicationName(QLatin1String("TrayBLE"));
 
     // TODO maybe #ifdef QT_NO_SYSTEMTRAYICON ...
     if (!QSystemTrayIcon::isSystemTrayAvailable()) {
@@ -36,27 +36,22 @@ int main(int argc, char *argv[])
     }
     QApplication::setQuitOnLastWindowClosed(false);
 
-    TrayBle weightScale;
-
-    QMenu trayIconMenu;
-//    trayIconMenu.addSeparator();
-    QObject::connect(trayIconMenu.addAction(TrayBle::tr("Quit")), &QAction::triggered,
-                     &app, &QApplication::quit);
-
+    TrayBle trayBle;
     TrayIcon trayIcon;
-    trayIcon.setContextMenu(&trayIconMenu);
-    trayIcon.show();
 
-    QObject::connect(&weightScale, &TrayBle::error,
+    QObject::connect(&trayBle, &TrayBle::readingUpdated,
+                     &trayIcon, &TrayIcon::showReading);
+    QObject::connect(&trayBle, &TrayBle::error,
                      &trayIcon, &TrayIcon::showError);
-    QObject::connect(&weightScale, &TrayBle::statusChanged,
+    QObject::connect(&trayBle, &TrayBle::statusChanged,
                      &trayIcon, &TrayIcon::showTooltip);
-    QObject::connect(&weightScale, SIGNAL(notify(QString,QString)),
+    QObject::connect(&trayBle, SIGNAL(notify(QString,QString)),
                      &trayIcon, SLOT(showMessage(QString,QString)));
 
-//    connect(trayIcon, &QSystemTrayIcon::messageClicked, &weightScale, &WeightScale::messageClicked);
-//    connect(trayIcon, &QSystemTrayIcon::activated, &weightScale, &WeightScale::iconActivated);
+//    connect(trayIcon, &QSystemTrayIcon::messageClicked, &trayBle, &trayBle::messageClicked);
+//    connect(trayIcon, &QSystemTrayIcon::activated, &trayBle, &trayBle::iconActivated);
 
-    weightScale.deviceSearch();
+    trayIcon.show();
+    trayBle.deviceSearch();
     return app.exec();
 }
