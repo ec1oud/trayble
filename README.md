@@ -18,6 +18,9 @@ could be added.
 
 Another supported device is the
 [APlant soil moisture sensor](http://wiki.aprbrother.com/wiki/APlant).
+It can now handle multiple plant sensors, and can log the moisture
+and temperature to influxDB.  As with unknown users, the first time
+it sees an unknown plant it will ask for the name.
 
 Requires Qt 5.12 or newer with extra modules
 qtconnectivity and qtsvg.  Qt Bluetooth doesn't support

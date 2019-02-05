@@ -89,7 +89,8 @@ private:
     QSettings m_settings;
 
     QNetworkAccessManager m_nam;
-    QNetworkRequest m_influxInsertReq;
+    QNetworkRequest m_influxHealthInsertReq;
+    QNetworkRequest m_influxPlantsInsertReq;
     QNetworkReply *m_netReply = nullptr;
 
     qreal m_weight = 0;

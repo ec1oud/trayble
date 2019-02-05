@@ -23,11 +23,13 @@
 static const QStringList supportedDeviceNamePrefixes = { "Electronic Scale", "aplant" };
 
 TrayBle::TrayBle() :
-    m_influxInsertReq(QUrl("http://localhost:8086/write?db=health"))
+    m_influxHealthInsertReq(QUrl("http://localhost:8086/write?db=health")),
+    m_influxPlantsInsertReq(QUrl("http://localhost:8086/write?db=weather"))
 {
     m_discoveryAgent = new QBluetoothDeviceDiscoveryAgent(this);
     m_discoveryAgent->setLowEnergyDiscoveryTimeout(0); // scan forever
-    m_influxInsertReq.setHeader(QNetworkRequest::ContentTypeHeader, "application/x-www-form-urlencoded");
+    m_influxHealthInsertReq.setHeader(QNetworkRequest::ContentTypeHeader, "application/x-www-form-urlencoded");
+    m_influxPlantsInsertReq.setHeader(QNetworkRequest::ContentTypeHeader, "application/x-www-form-urlencoded");
 
     connect(m_discoveryAgent, SIGNAL(deviceDiscovered(const QBluetoothDeviceInfo&)),
             this, SLOT(addDevice(const QBluetoothDeviceInfo&)));
@@ -266,16 +268,38 @@ void TrayBle::serviceError(QLowEnergyService::ServiceError e)
 
 void TrayBle::decodeIBeaconData(const QBluetoothDeviceInfo &dev, QByteArray data)
 {
+//qDebug() << dev.name() << dev.address() << data.toHex();
     if (dev.name().startsWith("aplant") && data.length() == 23) { // TODO and some part of some UUID is well-known?
+        // figure out which plant this is
+        m_settings.beginGroup(QLatin1String("Plants"));
+        QStringList plants = m_settings.childKeys();
+        QString plantName;
+        for (const QString &key : m_settings.childKeys()) {
+            if (dev.name() == key)
+                plantName = m_settings.value(key).toString();
+        }
+        if (plantName.isEmpty()) {
+            plantName = QInputDialog::getText(nullptr, tr("Which plant has sensor %1?").arg(dev.name()), tr("plant name"));
+            m_settings.setValue(dev.name(), plantName);
+        }
+        m_settings.endGroup();
+
         // TODO if there's a settable name on the device, we need that
-        QString message = tr("%1 temperature %2 moisture %3")
-                .arg(dev.name()).arg(int(data[data.length() - 2])).arg(int(data[data.length() - 3]));
-        QString reading = tr("%1°C %2%")
-                .arg(int(data[data.length() - 2])).arg(int(data[data.length() - 3]));
-        // If names become ambiguous we could include the address like this:
-//        QString name = dev.name() + QLatin1String(" (") + dev.address().toString() + QLatin1Char(')');
-        emit readingUpdated(dev.name(), reading);
+        int temperature = int(data[data.length() - 2]);
+        int moisture = int(data[data.length() - 3]);
+        QString message = tr("%1 (%2) temperature %3 moisture %4").arg(plantName).arg(dev.name()).arg(temperature).arg(moisture);
+        QString reading = tr("%1°C %2%").arg(temperature).arg(moisture);
+        emit readingUpdated(plantName, reading);
         setStatus(message);
+
+        // update influxDB
+        if (!m_netReply) {
+            QString reqData = QLatin1String("plants,plant=%1 temperature=%2,moisture=%3");
+            reqData = reqData.arg(plantName).arg(temperature).arg(moisture);
+            m_netReply = m_nam.post(m_influxPlantsInsertReq, reqData.toLatin1());
+            connect(m_netReply, &QNetworkReply::finished, this, &TrayBle::networkFinished);
+            connect(m_netReply, SIGNAL(error(QNetworkReply::NetworkError)), this, SLOT(networkError(QNetworkReply::NetworkError)));
+        }
     }
 }
 
@@ -396,7 +420,7 @@ void TrayBle::updateBodyComp(const QLowEnergyCharacteristic &c,
         if (!m_netReply) {
             QString reqData = QLatin1String("bodycomp,username=%1 weight=%2,unit=\"%3\",fat=%4,water=%5,muscle=%6,bone=%7,bmr=%8,vfat=%9");
             reqData = reqData.arg(nearestUser).arg(m_weight).arg(tr("kg")).arg(m_fat).arg(m_water).arg(m_muscle).arg(m_bone).arg(m_bmr).arg(m_vfat);
-            m_netReply = m_nam.post(m_influxInsertReq, reqData.toLatin1());
+            m_netReply = m_nam.post(m_influxHealthInsertReq, reqData.toLatin1());
             connect(m_netReply, &QNetworkReply::finished, this, &TrayBle::networkFinished);
             connect(m_netReply, SIGNAL(error(QNetworkReply::NetworkError)), this, SLOT(networkError(QNetworkReply::NetworkError)));
         }
