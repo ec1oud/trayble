@@ -26,6 +26,10 @@ TrayBle::TrayBle() :
     m_influxHealthInsertReq(QUrl("http://localhost:8086/write?db=health")),
     m_influxPlantsInsertReq(QUrl("http://localhost:8086/write?db=weather"))
 {
+    m_settings.beginGroup(QLatin1String("General"));
+    m_lastUser = m_settings.value(QLatin1String("lastUser")).toString();
+    m_settings.endGroup();
+
     m_discoveryAgent = new QBluetoothDeviceDiscoveryAgent(this);
     m_discoveryAgent->setLowEnergyDiscoveryTimeout(0); // scan forever
     m_influxHealthInsertReq.setHeader(QNetworkRequest::ContentTypeHeader, "application/x-www-form-urlencoded");
@@ -211,17 +215,74 @@ void TrayBle::disconnectService()
     }
 }
 
+QByteArray TrayBle::userCharacteristic(QString user)
+{
+    m_settings.beginGroup(QLatin1String("UserID"));
+    uint8_t id = m_settings.value(user, 99).toInt();
+    m_settings.endGroup();
+
+    m_settings.beginGroup(QLatin1String("UserGender"));
+    uint8_t gender = 0; // female
+    if (m_settings.value(user, "m") == "m")
+        gender = 1; // male
+    m_settings.endGroup();
+
+    m_settings.beginGroup(QLatin1String("UserExerciseLevel"));
+    uint8_t exerciseLevel = m_settings.value(user, 0).toInt();
+    m_settings.endGroup();
+
+    m_settings.beginGroup(QLatin1String("UserHeight"));
+    uint8_t height = m_settings.value(user, 170).toInt();
+    m_settings.endGroup();
+
+    m_settings.beginGroup(QLatin1String("UserBirthday"));
+    uint8_t age = int(m_settings.value(user, QDate(1990, 1, 1)).toDate().daysTo(QDate::currentDate()) / 365.25);
+    m_settings.endGroup();
+
+    m_settings.beginGroup(QLatin1String("UserUnits"));
+    uint8_t units = 1; // kg
+    QString unitsString = m_settings.value(user, 0).toString();
+    if (!unitsString.isEmpty()) {
+        switch (unitsString.at(0).toLatin1()) {
+        case 's':
+            units = 0;
+            break;
+        case 'p':
+            units = 2;
+            break;
+        }
+    }
+    m_settings.endGroup();
+
+    uint8_t checksum = id ^ gender ^ exerciseLevel ^ height ^ age ^ units;
+
+    QByteArray ret;
+    ret.append(0xfe);
+    ret.append(id);
+    ret.append(gender);
+    ret.append(exerciseLevel);
+    ret.append(height);
+    ret.append(age);
+    ret.append(units);
+    ret.append(checksum);
+
+    qDebug() << user << id << gender << exerciseLevel << height << age << units << checksum << ret.toHex();
+
+    return ret;
+}
+
 void TrayBle::sendRequest()
 {
     for (const QLowEnergyCharacteristic &characteristic : m_service->characteristics()) {
         qDebug() << "   characteristic " << hex << characteristic.handle() << characteristic.name() << characteristic.properties();
 
         switch (characteristic.properties()) {
-        case QLowEnergyCharacteristic::Write:
-            // TODO figure out if this is the preferences or what.  But merely subscribing for notifications
-            // without writing to this characteristic seems not to be enough.
-            m_service->writeCharacteristic(characteristic, QByteArray::fromHex("fe010100aa2d0285"));
-            break;
+        case QLowEnergyCharacteristic::Write: {
+            // Send user preferences (even though we aren't sure which user this is, yet).
+            // Merely subscribing for notifications without writing to this characteristic
+            // seems not to be enough to get a weight reading.
+            m_service->writeCharacteristic(characteristic, userCharacteristic(m_lastUser));
+        } break;
         case QLowEnergyCharacteristic::Notify: {
             m_notification = characteristic.descriptor(QBluetoothUuid::ClientCharacteristicConfiguration);
             if (!m_notification.isValid()) {
@@ -400,29 +461,43 @@ void TrayBle::updateBodyComp(const QLowEnergyCharacteristic &c,
             }
         }
 
-        if (users.isEmpty() || nearestUserDelta > 5) {
-            nearestUser = QInputDialog::getText(nullptr, tr("New user?"), tr("user name"));
+        bool differentUser = true;
+        if (nearestUser.isEmpty() || nearestUserDelta > 5) {
+            m_lastUser = QInputDialog::getText(nullptr, tr("New user?"), tr("user name"));
+        } else {
+            if (m_lastUser == nearestUser)
+                differentUser = false;
+            else
+                m_lastUser = nearestUser;
         }
 
         // update user's last-known weight for comparison next time
-        m_settings.setValue(nearestUser, m_weight);
+        m_settings.setValue(m_lastUser, m_weight);
+        m_settings.endGroup();
+
+        m_settings.beginGroup(QLatin1String("General"));
+        m_settings.setValue(QLatin1String("lastUser"), m_lastUser);
         m_settings.endGroup();
 
         // update the UI
         QString message = tr("%1 %2 (delta %8), %3% fat, %4% water, %5 %2 muscle, %6 %2 bone, BMR %7 kcal")
-                .arg(m_weight).arg(tr("kg")).arg(m_fat).arg(m_water).arg(m_muscle).arg(m_bone).arg(m_bmr).arg(nearestUserDelta);
+                .arg(m_weight).arg(tr("kg")).arg(m_fat).arg(m_water).arg(m_muscle).arg(m_bone).arg(m_bmr).arg(m_lastUser);
 
         setStatus(message);
-        emit notify(nearestUser, message);
-        emit readingUpdated(nearestUser, message);
+        emit notify(m_lastUser, message);
+        emit readingUpdated(m_lastUser, message);
 
         // update influxDB
         if (!m_netReply) {
             QString reqData = QLatin1String("bodycomp,username=%1 weight=%2,unit=\"%3\",fat=%4,water=%5,muscle=%6,bone=%7,bmr=%8,vfat=%9");
-            reqData = reqData.arg(nearestUser).arg(m_weight).arg(tr("kg")).arg(m_fat).arg(m_water).arg(m_muscle).arg(m_bone).arg(m_bmr).arg(m_vfat);
+            reqData = reqData.arg(m_lastUser).arg(m_weight).arg(tr("kg")).arg(m_fat).arg(m_water).arg(m_muscle).arg(m_bone).arg(m_bmr).arg(m_vfat);
             m_netReply = m_nam.post(m_influxHealthInsertReq, reqData.toLatin1());
             connect(m_netReply, &QNetworkReply::finished, this, &TrayBle::networkFinished);
             connect(m_netReply, SIGNAL(error(QNetworkReply::NetworkError)), this, SLOT(networkError(QNetworkReply::NetworkError)));
         }
+
+        // if this is a different user than last time, ask the scale to use the user's settings and try again
+        if (differentUser)
+            sendRequest();
     }
 }

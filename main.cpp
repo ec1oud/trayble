@@ -37,7 +37,7 @@ int main(int argc, char *argv[])
     QApplication::setQuitOnLastWindowClosed(false);
 
     TrayBle trayBle;
-    TrayIcon trayIcon;
+    TrayIcon trayIcon(trayBle.settings());
 
     QObject::connect(&trayBle, &TrayBle::readingUpdated,
                      &trayIcon, &TrayIcon::showReading);

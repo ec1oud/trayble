@@ -48,6 +48,7 @@ public:
     void connectService(const QBluetoothDeviceInfo &device);
     void disconnectService();
     void sendRequest();
+    QSettings &settings() { return m_settings; }
 
 private slots:
     void addDevice(const QBluetoothDeviceInfo&);
@@ -78,6 +79,9 @@ signals:
     void readingUpdated(QString context, QString values);
 
 private:
+    QByteArray userCharacteristic(QString user);
+
+private:
     QBluetoothDeviceDiscoveryAgent *m_discoveryAgent = nullptr;
     QSet<QString> m_discoveredDevices;
     QHash<QString, DeviceInfo> m_connectedDevices; // by QBluetoothAddress.toString(), because QBluetoothAddress qHash impl is missing
@@ -85,6 +89,7 @@ private:
     QBluetoothUuid m_serviceUuid;
     QLowEnergyService *m_service = nullptr; // TODO nix
     QString m_status;
+    QString m_lastUser;
 
     QSettings m_settings;
 
